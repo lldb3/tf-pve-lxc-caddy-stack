@@ -1,0 +1,13 @@
+{{ app_subdomain }}.{{ domain_name }} {
+	tls {
+        dns cloudflare {{ dns_challenge_api_token }}
+		resolvers 1.1.1.1
+	}
+	reverse_proxy {{ app_endpoint }}
+	log {
+		hostnames {{ app_subdomain }}.{{ domain_name }}
+        format json
+		output file /var/log/caddy/{{ app_subdomain }}.{{ domain_name }}.log
+	}
+}
+

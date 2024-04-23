@@ -1,0 +1,20 @@
+#################################### NETWORKS
+networks:
+  socket_proxy:
+    name: socket_proxy
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.200.0/24
+  main_net:
+    name: main_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.201.0/24
+
+
+  #################################### SECRETS
+  # htpasswd:
+  #   file: "./secrets/htpasswd"
+

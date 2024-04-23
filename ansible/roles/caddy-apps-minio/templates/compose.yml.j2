@@ -1,0 +1,24 @@
+x-common-keys-apps: &common-keys-apps
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+  networks:
+    - main_net
+  env_file:
+    - .env
+
+
+services:
+  minio:
+    container_name: minio
+    image: minio/minio
+    <<: *common-keys-apps
+{#    ports:#}
+{#      - 9000:9000#} # api
+{#      - 9001:9001#} # console
+    volumes:
+      - ./data/minio:/data
+    entrypoint: sh
+    command: -c 'minio server --console-address ":9001" /data'
+
+

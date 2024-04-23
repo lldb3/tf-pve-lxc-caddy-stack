@@ -1,0 +1,157 @@
+---
+- name: show vars
+  debug:
+    msg: "project_dir: {{ project_dir }}"
+
+
+- name: Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+
+
+- name: Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+
+
+- name: copy local caddy-stack file to remote
+  file:
+    state: directory
+    path: "{{ project_dir }}/apps/keycloak/data/postgresql"
+    owner: 1001
+    group: 1001
+    mode: 0700
+
+- name: create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+
+- name: create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+
+- name: Add / modify {{APP}}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+
+
+- name: Restart caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: restarted
+    services:
+      - caddy
+
+- name: Create app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - keycloak
+      - keycloak-db
+
+
+- name: Wait until keycloak is available
+  uri:
+    url: 'https://{{ app_subdomain }}.{{ domain_name }}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+
+- name: show site_up_output
+  debug:
+    var: site_up_output
+
+- name: Create ansible-realm for keycloak
+  community.general.keycloak_realm:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "https://{{ app_subdomain }}.{{ domain_name }}"
+    auth_realm: master
+    auth_username: "{{keycloak_admin}}"
+    auth_password: "{{keycloak_admin_pass}}"
+    id: ansible-realm
+    realm: ansible-realm
+    state: present
+    enabled: true
+
+- name: Create or update a Keycloak client (with all the bells and whistles)
+  community.general.keycloak_client:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "https://{{ app_subdomain }}.{{ domain_name }}"
+    auth_realm: master
+    auth_username: "{{keycloak_admin}}"
+    auth_password: "{{keycloak_admin_pass}}"
+    client_id: outline
+    realm: ansible-realm
+    state: present
+    name: outline-oidc
+    description: Description of this wonderful client
+    enabled: true
+    client_authenticator_type: client-secret
+    secret: REALLYWELLKEPTSECRET
+    redirect_uris:
+      - "https://outline.{{ domain_name }}/*"
+    web_origins:
+      - "https://outline.{{ domain_name }}"
+    not_before: 1507825725
+    bearer_only: false
+    consent_required: false
+    standard_flow_enabled: true
+    implicit_flow_enabled: false
+    direct_access_grants_enabled: false
+    service_accounts_enabled: false
+    authorization_services_enabled: false
+    public_client: false
+    frontchannel_logout: false
+    protocol: openid-connect
+  delegate_to: localhost
+
+- name: Create a user for outline realm
+  community.general.keycloak_user:
+    auth_client_id: admin-cli
+    auth_keycloak_url: "https://{{ app_subdomain }}.{{ domain_name }}"
+    auth_realm: master
+    auth_username: "{{keycloak_admin}}"
+    auth_password: "{{keycloak_admin_pass}}"
+    id: ansible-realm
+    realm: ansible-realm
+    username: outline
+    firstName: E
+    lastName: M
+    email: outline@example.com
+    enabled: true
+    emailVerified: true
+    credentials:
+      - type: password
+        value: password
+        temporary: false
+    state: present

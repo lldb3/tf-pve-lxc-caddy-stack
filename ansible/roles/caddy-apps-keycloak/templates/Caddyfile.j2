@@ -1,0 +1,22 @@
+{{ app_subdomain }}.{{ domain_name }} {
+	coraza_waf {
+		load_owasp_crs
+		directives `
+		Include @coraza.conf-recommended
+		Include @crs-setup.conf.example
+{# todo: tune waf rules to secure traffic and avoid blocking legit request#}
+{#		Include @owasp_crs/*.conf#}
+		SecRuleEngine On
+		`
+	}
+	tls {
+        dns cloudflare {{ dns_challenge_api_token }}
+		resolvers 1.1.1.1
+	}
+	reverse_proxy {{ app_endpoint }}
+	log {
+		hostnames {{ app_subdomain }}.{{ domain_name }}
+        format json
+		output file /var/log/caddy/{{ app_subdomain }}.{{ domain_name }}.log
+	}
+}

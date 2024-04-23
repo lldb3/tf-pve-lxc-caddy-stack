@@ -1,0 +1,8 @@
+---
+
+app_endpoint: "minio:9001"
+app_name: "minio"
+app_subdomain: "minio"
+
+minio_admin_name: "admin"
+minio_admin_pass: "tartenpion"

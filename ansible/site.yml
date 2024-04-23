@@ -1,0 +1,47 @@
+# site.yml
+---
+- hosts: all
+  vars:
+
+- hosts: proxmox
+  roles:
+    - role: proxmox
+      tags: proxmox
+
+
+- hosts: lxc_container
+  roles:
+    - role: shell
+      tags: shell
+    - role: docker
+      tags: docker
+    - role: caddy
+      tags: caddy
+    - role: caddy-apps-keycloak
+      tags: caddy-apps-keycloak
+    - role: caddy-apps-minio
+      tags: caddy-apps-minio
+    - role: caddy-apps-invoiceninja
+      tags: caddy-apps-invoiceninja
+    - role: caddy-apps-outline
+      tags: caddy-apps-outline
+    - role: caddy-apps-teable
+      tags: caddy-apps-teable
+    - role: caddy-apps-seafile
+      tags: caddy-apps-seafile
+
+###  at the end start all docker services
+  tasks:
+    - name: Create and start services
+      community.docker.docker_compose_v2:
+        project_src: "{{ project_dir }}"
+        build: always
+        pull: missing
+      register: output
+
+    - name: Show results
+      ansible.builtin.debug:
+        var: output
+
+
+

@@ -1,0 +1,105 @@
+
+include:
+  - compose-shared.yml
+  - ${KEYCLOAK_COMPOSE_PATH:-/dev/null}
+  - ${INVOICENINJA_COMPOSE_PATH:-/dev/null}
+  - ${MINIO_COMPOSE_PATH:-/dev/null}
+  - ${YOUTRACK_COMPOSE_PATH:-/dev/null}
+  - ${TEABLE_COMPOSE_PATH:-/dev/null}
+  - ${OUTLINE_COMPOSE_PATH:-/dev/null}
+  - ${SEAFILE_COMPOSE_PATH:-/dev/null}
+
+
+
+#################################### EXTENSION FIELDS ######################################################
+# Common environment values
+x-environment: &x-environment
+  TZ: $TZ
+  PUID: $PUID
+  PGID: $PGID
+
+# Keys common to some of the dependent services/apps
+x-common-keys-apps: &common-keys-apps
+  networks:
+    - main_net
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+# Keys common to some of the core services that we always to automatically restart on failure
+x-common-keys-core: &common-keys-core
+  networks:
+    - main_net
+  security_opt:
+    - no-new-privileges:true
+  restart: always
+
+###################################################### SERVICES ######################################################
+services:
+  ###################################################### CORE
+  socket-proxy:
+    container_name: socket-proxy
+    image: tecnativa/docker-socket-proxy
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    networks:
+      socket_proxy:
+        ipv4_address: 192.168.200.254 # You can specify a static IP
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    env_file:
+      - .socketproxy.env
+
+
+  ###################################################### FRONTEND
+  caddy:
+    <<: *common-keys-core
+    container_name: caddy
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    volumes:
+      - $CONFIGDIR/Caddyfile:/etc/caddy/Caddyfile
+      - $CONFIGDIR/caddy-apps:/etc/caddy/caddy-apps
+      - $DATADIR/logs:/var/log/caddy
+      - $DATADIR/appdata/caddy_data:/data
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
+
+
+  ##################################################### base nginx site
+  shaper-nginx:
+    container_name: base-nginx
+    image: nginx
+    <<: *common-keys-apps
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    # command: --run-once # will run once and stop
+    restart: always
+    volumes:
+      # when docker auth is needed
+      - $CONFIGDIR/watchtower/config.json:/config.json:ro
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      socket_proxy:
+    environment:
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      ## ignore updating containers only with `com.centurylinklabs.watchtower.enable=false`
+      - WATCHTOWER_LABEL_ENABLE=false
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_LOG_LEVEL=info
+      - TZ=$TZ
+      - WATCHTOWER_SCHEDULE=22 22 * * * # at 22:22 every day
+      - WATCHTOWER_NOTIFICATIONS=shoutrrr
+      - WATCHTOWER_NOTIFICATION_TITLE_TAG=$HOSTNAME
+      - WATCHTOWER_NOTIFICATION_URL=$PUSHOVER_URL

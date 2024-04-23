@@ -1,0 +1,10 @@
+---
+
+app_endpoint: "keycloak:8080"
+app_name: "keycloak"
+app_subdomain: "keycloak"
+
+keycloak_postgresql_user: "keycloak"
+keycloak_postgresql_pass: "dae19943-4166-4cc6-b338-728896c48656"
+keycloak_admin: "admin"
+keycloak_admin_pass: "tartenpion"

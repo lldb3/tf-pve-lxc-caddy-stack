@@ -1,0 +1,82 @@
+x-common-keys-apps: &common-keys-apps
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+networks:
+  outline_net:
+    driver: bridge
+
+services:
+  outline_db:
+    container_name: outline_db
+    <<: *common-keys-apps
+    image: postgres
+    environment:
+      POSTGRES_DB: ${OUTLINE_DB_NAME}
+      POSTGRES_USER: ${OUTLINE_DB_USER}
+      POSTGRES_PASSWORD: ${OUTLINE_DB_PASSWORD}
+    # ports:
+    #   - 5432:5432
+    volumes:
+      # permissions:  chown -R 1001:1001 ./data/postgres
+      - ./data/postgresql:/var/lib/postgresql/data
+    networks:
+      - outline_net
+
+  outline_redis:
+    container_name: outline_redis
+    image: redis
+    networks:
+      - outline_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    <<: *common-keys-apps
+
+
+  outline:
+    container_name: outline
+    image: outlinewiki/outline
+    networks:
+      - main_net
+      - outline_net
+    <<: *common-keys-apps
+    depends_on:
+      - outline_db
+      - outline_redis
+    environment:
+      DATABASE_URL: postgres://${OUTLINE_DB_USER}:${OUTLINE_DB_PASSWORD}@outline_db:5432/${OUTLINE_DB_NAME}?sslmode=disable&connect_timeout=10
+      PGSSLMODE: disable
+      REDIS_URL: redis://outline_redis:6379
+      URL: ${OUTLINE_URL}
+      PORT: 3000
+      SECRET_KEY: ${OUTLINE_SECRET_KEY}
+      UTILS_SECRET: ${OUTLINE_UTILS_SECRET}
+      FORCE_HTTPS: 'false'
+      ENABLE_UPDATES: 'false' # telemetry
+      WEB_CONCURRENCY: 1
+      NODE_ENV: 'production'
+
+      AWS_ACCESS_KEY_ID: ${OUTLINE_MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${OUTLINE_MINIO_USER_PASSWORD}
+      AWS_S3_UPLOAD_BUCKET_URL: ${OUTLINE_AWS_S3_UPLOAD_BUCKET_URL}
+      AWS_S3_UPLOAD_BUCKET_NAME: ${OUTLINE_MINIO_BUCKET_NAME}
+      AWS_S3_FORCE_PATH_STYLE: 'true'
+      AWS_S3_ACL: private
+      #AWS_REGION: # this can be empty
+      FILE_STORAGE_UPLOAD_MAX_SIZE: 555000000
+      FILE_STORAGE_IMPORT_MAX_SIZE: 555000000
+      FILE_STORAGE_WORKSPACE_IMPORT_MAX_SIZE: 555000000
+
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_AUTH_URI: ${OIDC_AUTH_URI}
+      OIDC_TOKEN_URI: ${OIDC_TOKEN_URI}
+      OIDC_USERINFO_URI: ${OIDC_USERINFO_URI}
+      OIDC_DISPLAY_NAME: ${OIDC_DISPLAY_NAME}
+      OIDC_USERNAME_CLAIM: ${OIDC_USERNAME_CLAIM}
+      OIDC_SCOPES: ${OIDC_SCOPES}

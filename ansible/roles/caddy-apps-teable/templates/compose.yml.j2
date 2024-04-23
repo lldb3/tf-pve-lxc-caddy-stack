@@ -1,0 +1,68 @@
+x-common-keys-apps: &common-keys-apps
+  security_opt:
+    - no-new-privileges:true
+
+networks:
+  teable_net:
+    name: teable_net
+
+
+services:
+  teable:
+    <<: *common-keys-apps
+    restart: unless-stopped
+    image: ghcr.io/teableio/teable:latest
+    container_name: teable
+{#    ports:#}
+{#      - '3000:3000'#}
+    volumes:
+      - ./data/teable:/app/.assets:rw
+    environment:
+      - TZ=${TZ}
+      - NEXT_ENV_IMAGES_ALL_REMOTE=true
+      - PUBLIC_ORIGIN=${PUBLIC_ORIGIN}
+    env_file:
+      - .env
+    networks:
+      - teable_net
+      - main_net
+    depends_on:
+      teable-db-migrate:
+        condition: service_completed_successfully
+
+  teable-db:
+    <<: *common-keys-apps
+    restart: unless-stopped
+    container_name: teable-db
+    image: postgres:15.4
+{#    ports:#}
+{#      - '42345:5432'#}
+    volumes:
+      - ./data/teable-db:/var/lib/postgresql/data:rw
+    environment:
+      - TZ=${TZ}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    networks:
+      - teable_net
+    healthcheck:
+      test: [ 'CMD-SHELL', "sh -c 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  teable-db-migrate:
+    <<: *common-keys-apps
+    container_name: teable-db-migrate
+    image: ghcr.io/teableio/teable-db-migrate:latest
+    environment:
+      - TZ=${TZ}
+      - PRISMA_DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
+    networks:
+      - teable_net
+    depends_on:
+      teable-db:
+        condition: service_healthy
+
+

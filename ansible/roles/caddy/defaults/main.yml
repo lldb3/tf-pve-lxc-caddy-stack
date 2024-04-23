@@ -1,0 +1,10 @@
+---
+
+project_dir: "/opt/caddy-stack"
+project_dir_owner: "root"
+project_dir_group: "root"
+
+timezone: UTC
+
+# dns challenge, defaults to testing 'staging' repo to avoid rate-limit
+staging: true

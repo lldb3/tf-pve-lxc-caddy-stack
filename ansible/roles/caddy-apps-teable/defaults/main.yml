@@ -1,0 +1,5 @@
+---
+
+app_endpoint: "teable:3000"
+app_name: "teable"
+app_subdomain: "teable"

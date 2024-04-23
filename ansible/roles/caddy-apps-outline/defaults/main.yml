@@ -1,0 +1,15 @@
+---
+
+app_endpoint: "outline:3000"
+app_name: "outline"
+app_subdomain: "outline"
+
+outline_postgresql_user: "outline"
+outline_postgresql_pass: "dae19943-4166-4cc6-b338-728896c48656"
+#outline_admin: "admin"
+#outline_admin_pass: "tartenpion"
+
+outline_minio_password: "tartenpion"
+
+
+outline_minio_bucket_name: outline-bucket

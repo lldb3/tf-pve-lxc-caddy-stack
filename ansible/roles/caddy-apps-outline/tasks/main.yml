@@ -1,0 +1,172 @@
+---
+- name: show vars
+  debug:
+    msg: "project_dir: {{ project_dir }}"
+
+
+- name: Create app_name directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+
+
+- name: Create app subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+
+
+#- name: make postgresql data owned by 1001
+#  file:
+#    state: directory
+#    path: "{{ project_dir }}/apps/{{app_name}}/data/postgresql"
+#    owner: 1001
+#    group: 1001
+#    mode: 0700
+
+- name: create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/caddy-apps/{{ app_name }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+
+- name: create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/apps/{{ app_name }}/{{ item }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - .env
+
+- name: Add / modify {{APP}}_INCLUDE_PATH in root .env file
+  ansible.builtin.lineinfile:
+    path: "{{ project_dir }}/.env"
+    regexp: '^{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+    line: '{{ app_name | upper }}_COMPOSE_PATH=./apps/{{ app_name }}/compose.yml'
+
+
+- name: Restart caddy
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: restarted
+    services:
+      - caddy
+
+- name: Create app services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    pull: missing
+    state: present
+    services:
+      - minio
+      - outline_db
+      - outline_redis
+      - outline
+
+
+
+- name: Wait until app is available
+  uri:
+    url: 'https://{{ app_subdomain }}.{{ domain_name }}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+
+- name: show site_up_output
+  debug:
+    var: site_up_output
+
+
+
+- name: Add a Minio bucket
+  dubzland.minio.minio_bucket:
+    name: outline-bucket
+    minio_url: 'https://minio.{{domain_name}}'
+    minio_access_key: '{{minio_admin_name}}'
+    minio_secret_key: '{{minio_admin_pass}}'
+    state: present
+  delegate_to: localhost
+
+
+
+- name: Add Minio Outline bucket policy
+  dubzland.minio.minio_policy:
+    name: OutlineAppFullAccess
+    data: |
+      {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetBucketLocation",
+              "s3:ListBucket",
+              "s3:ListBucketMultipartUploads"
+            ],
+            "Resource": [
+              "arn:aws:s3:::outline-bucket"
+            ]
+          },
+          {
+            "Action": [
+              "s3:AbortMultipartUpload",
+              "s3:DeleteObject",
+              "s3:GetObject",
+              "s3:ListMultipartUploadParts",
+              "s3:PutObject",
+              "s3:GetObject"
+            ],
+            "Effect": "Allow",
+            "Resource": [
+              "arn:aws:s3:::outline-bucket/*"
+            ],
+            "Sid": ""
+          }
+        ]
+      }
+    minio_url: 'https://minio.{{domain_name}}'
+    minio_access_key: '{{minio_admin_name}}'
+    minio_secret_key: '{{minio_admin_pass}}'
+    state: present
+  delegate_to: localhost
+
+- name: Add a Minio user for outline
+  dubzland.minio.minio_user:
+    access_key: outline
+    secret_key: "{{outline_minio_password}}"
+    minio_url: 'https://minio.{{domain_name}}'
+    minio_access_key: '{{minio_admin_name}}'
+    minio_secret_key: '{{minio_admin_pass}}'
+    state: present
+    policy: OutlineAppFullAccess
+  delegate_to: localhost
+
+
+
+
+
+- name: finally - config local minio connection and make public data readable on server (profile pictures)
+  shell: |
+    mc config host add minio https://minio.{{domain_name}} '{{minio_admin_name}}' '{{minio_admin_pass}}'
+    mc anonymous set-json '{{role_path}}/templates/data-public.json' minio/outline-bucket
+  delegate_to: localhost
+
+

@@ -1,0 +1,118 @@
+---
+- name: show vars
+  debug:
+    msg: "project_dir: {{ project_dir }}"
+
+
+- name: Create project directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+
+
+- name: Create stack subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/{{ item }}"
+    mode: 0770
+  loop:
+    - data
+    - config
+
+- name: Create stack config subdirectories
+  ansible.builtin.file:
+    state: directory
+    path: "{{ project_dir }}/{{ item }}"
+    mode: 0770
+  loop:
+    - config
+    - config/caddy-apps
+    - config/watchtower
+    - apps
+    - secrets
+
+- name: Create watchtower config.json
+  ansible.builtin.file:
+    state: touch
+    path: "{{ project_dir }}/config/watchtower/config.json"
+    mode: 0640
+
+
+
+#
+#- name: Add DNS challenge secret
+#  ansible.builtin.copy:
+#    #    todo: use ansible vault
+#    content: "{{ dns_challenge_api_token }}"
+#    dest: "{{ project_dir }}/secrets/cloudflare_api_token"
+#    owner: root
+#    group: root
+#    mode: 0600
+
+- name: copy local caddy-stack files to remote
+  copy:
+    src: "{{ role_path }}/files/"
+    dest: "{{ project_dir }}/"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+
+- name: copy caddy_reload
+  copy:
+    src: "{{ role_path }}/files/caddy_reload.sh"
+    dest: "{{ project_dir }}/"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0700
+
+- name: create Caddyfile from template
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ project_dir }}/config/Caddyfile"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+
+- name: create compose.yml file
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ project_dir }}/{{ item}}"
+    owner: "{{ project_dir_owner }}"
+    group: "{{ project_dir_group }}"
+    mode: 0600
+  loop:
+    - compose.yml
+    - compose-shared.yml
+    - .env
+
+- name: Create and start services
+  community.docker.docker_compose_v2:
+    project_src: "{{ project_dir }}"
+    build: always
+    state: present
+    pull: missing
+  register: output
+
+- name: Show output
+  ansible.builtin.debug:
+    var: output
+
+- name: Wait until HTTPS is valid on main domain_name
+  uri:
+    url: 'https://{{domain_name}}'
+    return_content: no
+    validate_certs: yes
+    status_code:
+      - 200
+  until: site_up_output.status == 200
+  retries: 24 # 240 seconds = 4 minutes
+  delay: 10
+  register: site_up_output
+
+- name: show site_up_output
+  debug:
+    var: site_up_output
+
